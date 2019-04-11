@@ -23,6 +23,7 @@ const Map = require('./map');
 const Painting = require('./painting');
 const Render = require('./render');
 
+const REALM_NAME_GENERATOR = require('./RealmNameGenerator');
 
 const initialParams = {
     elevation: [
@@ -66,6 +67,7 @@ const initialParams = {
 };
 
 const PARAMS_CHANGED_EVENT = 'ParamsChanged';
+const PARAMS_CLASS_NAME = 'ParamsValue';
 
 /** @typedef { import("./types").Mesh } Mesh */
 
@@ -92,7 +94,7 @@ function main({ mesh, peaks_t }) {
             span.appendChild(document.createTextNode(name));
 
             let slider = document.createElement('input');
-            slider.className = "ParamSlider";
+            slider.className = "ParamsValue";
             slider.setAttribute('type', name === 'seed' ? 'number' : 'range');
             slider.setAttribute('min', min);
             slider.setAttribute('max', max);
@@ -108,7 +110,7 @@ function main({ mesh, peaks_t }) {
 
             slider.addEventListener(PARAMS_CHANGED_EVENT, () => {
                 slider.value = param[phase][name];
-            })
+            });
 
             /* improve slider behavior on iOS */
             function handleTouch(e) {
@@ -136,6 +138,11 @@ function main({ mesh, peaks_t }) {
         }
     }
 
+    param.info = {
+        name: "",
+        descriptiveName: ""
+    };
+
     function redraw() {
         render.updateView(param.render);
     }
@@ -143,6 +150,13 @@ function main({ mesh, peaks_t }) {
     function AddListeners() {
         const downloadButton = document.getElementById('button-download');
         if (downloadButton) downloadButton.addEventListener('click', download);
+
+        document.getElementById('input-mapName').addEventListener(PARAMS_CHANGED_EVENT, (evt) => {
+            evt.target.value = param['info'].name;
+        });
+        document.getElementById('input-descriptiveMapName').addEventListener(PARAMS_CHANGED_EVENT, (evt) => {
+            evt.target.value = param['info'].descriptiveName;
+        });
 
         document.getElementById('button-save').addEventListener('click', saveToLocalStorage);
         document.getElementById('button-load').addEventListener('click', loadFromLocalStorage);
@@ -225,7 +239,7 @@ function main({ mesh, peaks_t }) {
         // @ts-ignore
         document.querySelector("#button-reset").disabled = !userHasPainted;
     }
-    
+
     function generate() {
         if (!working) {
             working = true;
@@ -250,18 +264,19 @@ function main({ mesh, peaks_t }) {
             workRequested = true;
         }
     }
-    
+
     function getMapName() {
+        let mapNameInput = (document.getElementById("mapName"));
         // @ts-ignore
-        let mapName = (document.getElementById("mapName")).value;
+        let mapName = mapNameInput.value;
         if (!mapName) {
             mapName = "mapgen4";
             // @ts-ignore
-            (document.getElementById("mapName")).value = mapName;
+            mapNameInput.value = mapName;
         }
         return mapName;
     }
-    
+
     function loadFromLocalStorage() {
         let mapName = getMapName();
         let jsonMap = localStorage.getItem(mapName);
@@ -272,7 +287,7 @@ function main({ mesh, peaks_t }) {
     function paramsChanged() {
         let event = new CustomEvent(PARAMS_CHANGED_EVENT);
 
-        document.querySelectorAll(".ParamSlider").forEach(
+        document.querySelectorAll(`.${PARAMS_CLASS_NAME}`).forEach(
             (element) => {
                 element.dispatchEvent(event);
             }
@@ -280,7 +295,7 @@ function main({ mesh, peaks_t }) {
 
         generate();
     }
-    
+
     function saveToLocalStorage() {
         let mapName = getMapName();
         let jsonMap = JSON.stringify(param);
@@ -291,7 +306,7 @@ function main({ mesh, peaks_t }) {
         // Don't random rendering values
         for (let phase of ['elevation', 'biomes', 'rivers']) {
             for (let [name, initialValue, min, max] of initialParams[phase]) {
-                
+
                 let rnd = getRandomArbitrary(min, max);
                 if (name === 'seed') {
                     rnd = Math.floor(rnd);
@@ -300,6 +315,11 @@ function main({ mesh, peaks_t }) {
                 param[phase][name] = rnd;
             }
         }
+
+        var names = REALM_NAME_GENERATOR.generateRealmNames(true);
+        console.log(JSON.stringify(names));
+        param.info.name = names.name;
+        param.info.descriptiveName = names.descriptiveName;
 
         paramsChanged();
     }
@@ -310,6 +330,6 @@ function main({ mesh, peaks_t }) {
 
 function getRandomArbitrary(min, max) {
     return Math.random() * (max - min) + min;
-  }
+}
 
 MakeMesh.makeMesh().then(main);
