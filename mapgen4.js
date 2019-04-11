@@ -14,12 +14,14 @@
  */
 'use strict';
 
-const param       = require('./config');
-const WebWorkify  = require('webworkify');
-const MakeMesh    = require('./mesh');
-const Map         = require('./map');
-const Painting    = require('./painting');
-const Render      = require('./render');
+let param = require('./config');
+// @ts-ignore
+const WebWorkify = require('webworkify');
+const MakeMesh = require('./mesh');
+// @ts-ignore
+const Map = require('./map');
+const Painting = require('./painting');
+const Render = require('./render');
 
 
 const initialParams = {
@@ -43,7 +45,7 @@ const initialParams = {
         ['flow', 0.2, 0, 1],
     ],
     render: [
-        ['zoom', 100/480, 100/1000, 100/50],
+        ['zoom', 100 / 480, 100 / 1000, 100 / 50],
         ['x', 500, 0, 1000],
         ['y', 500, 0, 1000],
         ['light_angle_deg', 80, 0, 360],
@@ -63,7 +65,8 @@ const initialParams = {
     ],
 };
 
-    
+const PARAMS_CHANGED_EVENT = 'ParamsChanged';
+
 /** @typedef { import("./types").Mesh } Mesh */
 
 /**
@@ -71,7 +74,7 @@ const initialParams = {
  *
  * @param {{mesh: Mesh, peaks_t: number[]}} _
  */
-function main({mesh, peaks_t}) {
+function main({ mesh, peaks_t }) {
     let render = new Render.Renderer(mesh);
 
     /* set initial parameters */
@@ -82,24 +85,30 @@ function main({mesh, peaks_t}) {
         container.appendChild(header);
         document.getElementById('sliders').appendChild(container);
         for (let [name, initialValue, min, max] of initialParams[phase]) {
-            const step = name === 'seed'? 1 : 0.001;
+            const step = name === 'seed' ? 1 : 0.001;
             param[phase][name] = initialValue;
 
             let span = document.createElement('span');
             span.appendChild(document.createTextNode(name));
-            
+
             let slider = document.createElement('input');
-            slider.setAttribute('type', name === 'seed'? 'number' : 'range');
+            slider.className = "ParamSlider";
+            slider.setAttribute('type', name === 'seed' ? 'number' : 'range');
             slider.setAttribute('min', min);
             slider.setAttribute('max', max);
-            slider.setAttribute('step', step);
-            slider.addEventListener('input', event => {
+            slider.setAttribute('step', step.toString());
+            // @ts-ignore
+            slider.addEventListener('input', () => {
                 param[phase][name] = slider.valueAsNumber;
                 requestAnimationFrame(() => {
                     if (phase == 'render') { redraw(); }
                     else { generate(); }
                 });
             });
+
+            slider.addEventListener(PARAMS_CHANGED_EVENT, () => {
+                slider.value = param[phase][name];
+            })
 
             /* improve slider behavior on iOS */
             function handleTouch(e) {
@@ -126,9 +135,18 @@ function main({mesh, peaks_t}) {
             slider.value = initialValue;
         }
     }
-    
+
     function redraw() {
         render.updateView(param.render);
+    }
+
+    function AddListeners() {
+        const downloadButton = document.getElementById('button-download');
+        if (downloadButton) downloadButton.addEventListener('click', download);
+
+        document.getElementById('button-save').addEventListener('click', saveToLocalStorage);
+        document.getElementById('button-load').addEventListener('click', loadFromLocalStorage);
+        document.getElementById('button-random').addEventListener('click', randomizeMap);
     }
 
     /* Ask render module to copy WebGL into Canvas */
@@ -138,14 +156,25 @@ function main({mesh, peaks_t}) {
             render.screenshotCanvas.toBlob(blob => {
                 // TODO: Firefox doesn't seem to allow a.click() to
                 // download; is it everyone or just my setup?
+                let mapName = getMapName();
+
                 a.href = URL.createObjectURL(blob);
-                a.setAttribute('download', `mapgen4-${param.elevation.seed}.png`);
+                a.setAttribute('download', `${mapName}.png`);
                 a.click();
+
+                // Save configuration so we can recreate exact map
+                const configFilename = `${mapName}-config.json`;
+                const jsonStr = JSON.stringify(param);
+
+                let configLink = document.createElement('a');
+                configLink.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(jsonStr));
+                configLink.setAttribute('download', configFilename);
+                configLink.click();
             });
         };
         render.updateView(param.render);
     }
-    
+
     Painting.screenToWorldCoords = (coords) => {
         let out = render.screenToWorld(coords);
         return [out[0] / 1000, out[1] / 1000];
@@ -163,10 +192,10 @@ function main({mesh, peaks_t}) {
     worker.addEventListener('messageerror', event => {
         console.log("WORKER ERROR", event);
     });
-    
+
     worker.addEventListener('message', event => {
         working = false;
-        let {elapsed, numRiverTriangles, quad_elements_buffer, a_quad_em_buffer, a_river_xyuv_buffer} = event.data;
+        let { elapsed, numRiverTriangles, quad_elements_buffer, a_quad_em_buffer, a_river_xyuv_buffer } = event.data;
         elapsedTimeHistory.push(elapsed | 0);
         if (elapsedTimeHistory.length > 10) { elapsedTimeHistory.splice(0, 1); }
         const timingDiv = document.getElementById('timing');
@@ -185,10 +214,15 @@ function main({mesh, peaks_t}) {
         }
     });
 
+    worker.postMessage({ mesh, peaks_t, param });
+
     function updateUI() {
         let userHasPainted = Painting.userHasPainted();
+        // @ts-ignore
         document.querySelector("#slider-seed input").disabled = userHasPainted;
+        // @ts-ignore
         document.querySelector("#slider-island input").disabled = userHasPainted;
+        // @ts-ignore
         document.querySelector("#button-reset").disabled = !userHasPainted;
     }
     
@@ -207,21 +241,75 @@ function main({mesh, peaks_t}) {
                 a_quad_em_buffer: render.a_quad_em.buffer,
                 a_river_xyuv_buffer: render.a_river_xyuv.buffer,
             }, [
-                render.quad_elements.buffer,
-                render.a_quad_em.buffer,
-                render.a_river_xyuv.buffer,
-            ]
+                    render.quad_elements.buffer,
+                    render.a_quad_em.buffer,
+                    render.a_river_xyuv.buffer,
+                ]
             );
         } else {
             workRequested = true;
         }
     }
+    
+    function getMapName() {
+        // @ts-ignore
+        let mapName = (document.getElementById("mapName")).value;
+        if (!mapName) {
+            mapName = "mapgen4";
+            // @ts-ignore
+            (document.getElementById("mapName")).value = mapName;
+        }
+        return mapName;
+    }
+    
+    function loadFromLocalStorage() {
+        let mapName = getMapName();
+        let jsonMap = localStorage.getItem(mapName);
+        param = JSON.parse(jsonMap);
+        paramsChanged();
+    }
 
-    worker.postMessage({mesh, peaks_t, param});
+    function paramsChanged() {
+        let event = new CustomEvent(PARAMS_CHANGED_EVENT);
+
+        document.querySelectorAll(".ParamSlider").forEach(
+            (element) => {
+                element.dispatchEvent(event);
+            }
+        );
+
+        generate();
+    }
+    
+    function saveToLocalStorage() {
+        let mapName = getMapName();
+        let jsonMap = JSON.stringify(param);
+        localStorage.setItem(mapName, jsonMap);
+    }
+
+    function randomizeMap() {
+        // Don't random rendering values
+        for (let phase of ['elevation', 'biomes', 'rivers']) {
+            for (let [name, initialValue, min, max] of initialParams[phase]) {
+                
+                let rnd = getRandomArbitrary(min, max);
+                if (name === 'seed') {
+                    rnd = Math.floor(rnd);
+                }
+
+                param[phase][name] = rnd;
+            }
+        }
+
+        paramsChanged();
+    }
+
+    AddListeners();
     generate();
-
-    const downloadButton = document.getElementById('button-download');
-    if (downloadButton) downloadButton.addEventListener('click', download);
 }
+
+function getRandomArbitrary(min, max) {
+    return Math.random() * (max - min) + min;
+  }
 
 MakeMesh.makeMesh().then(main);
