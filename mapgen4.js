@@ -16,8 +16,10 @@
 
 let param = require('./config');
 // @ts-ignore
+// @ts-ignore
 const WebWorkify = require('webworkify');
 const MakeMesh = require('./mesh');
+// @ts-ignore
 // @ts-ignore
 const Map = require('./map');
 const Painting = require('./painting');
@@ -139,7 +141,7 @@ function main({ mesh, peaks_t }) {
     }
 
     param.info = {
-        name: "",
+        name: "mapgen4",
         descriptiveName: ""
     };
 
@@ -151,16 +153,38 @@ function main({ mesh, peaks_t }) {
         const downloadButton = document.getElementById('button-download');
         if (downloadButton) downloadButton.addEventListener('click', download);
 
-        document.getElementById('input-mapName').addEventListener(PARAMS_CHANGED_EVENT, (evt) => {
-            evt.target.value = param['info'].name;
+        const txtMapName = document.getElementById('input-mapName');
+        txtMapName.addEventListener("change", (evt) => {
+            // @ts-ignore
+            let name = evt.target.value;
+
+            if (!name || !name.trim()) {
+                name = REALM_NAME_GENERATOR.getRealmName();
+                // @ts-ignore
+                evt.target.value = name;
+            }
+
+            param.info.name = name;
         });
-        document.getElementById('input-descriptiveMapName').addEventListener(PARAMS_CHANGED_EVENT, (evt) => {
+        txtMapName.addEventListener(PARAMS_CHANGED_EVENT, (evt) => {
+            evt.target.value = param.info.name;
+        });
+
+        const txtMapDesc = document.getElementById('input-descriptiveMapName');
+        txtMapDesc.addEventListener("change", (evt) => {
+            // @ts-ignore
+            param.info.descriptiveName = evt.target.value;
+        });
+        txtMapDesc.addEventListener(PARAMS_CHANGED_EVENT, (evt) => {
             evt.target.value = param['info'].descriptiveName;
         });
 
         document.getElementById('button-save').addEventListener('click', saveToLocalStorage);
         document.getElementById('button-load').addEventListener('click', loadFromLocalStorage);
-        document.getElementById('button-random').addEventListener('click', randomizeMap);
+        
+        document.getElementById('button-randomMap').addEventListener('click', randomizeMap);
+        document.getElementById('button-randomMapName').addEventListener('click', randomizeMapName);
+        document.getElementById('button-randomMapDescriptive').addEventListener('click', randomizeMapDescriptive);
     }
 
     /* Ask render module to copy WebGL into Canvas */
@@ -170,6 +194,7 @@ function main({ mesh, peaks_t }) {
             render.screenshotCanvas.toBlob(blob => {
                 // TODO: Firefox doesn't seem to allow a.click() to
                 // download; is it everyone or just my setup?
+                // @ts-ignore
                 let mapName = getMapName();
 
                 a.href = URL.createObjectURL(blob);
@@ -265,23 +290,14 @@ function main({ mesh, peaks_t }) {
         }
     }
 
-    function getMapName() {
-        let mapNameInput = (document.getElementById("mapName"));
-        // @ts-ignore
-        let mapName = mapNameInput.value;
-        if (!mapName) {
-            mapName = "mapgen4";
-            // @ts-ignore
-            mapNameInput.value = mapName;
-        }
-        return mapName;
-    }
-
     function loadFromLocalStorage() {
-        let mapName = getMapName();
-        let jsonMap = localStorage.getItem(mapName);
-        param = JSON.parse(jsonMap);
-        paramsChanged();
+        let jsonMap = localStorage.getItem(param.info.name);
+        if (jsonMap) {
+            param = JSON.parse(jsonMap);
+            paramsChanged();
+        } else {
+            alert(`${param.info.name} map not found on local storage`);
+        }
     }
 
     function paramsChanged() {
@@ -297,14 +313,14 @@ function main({ mesh, peaks_t }) {
     }
 
     function saveToLocalStorage() {
-        let mapName = getMapName();
         let jsonMap = JSON.stringify(param);
-        localStorage.setItem(mapName, jsonMap);
+        localStorage.setItem(param.info.name, jsonMap);
     }
 
     function randomizeMap() {
         // Don't random rendering values
         for (let phase of ['elevation', 'biomes', 'rivers']) {
+            // @ts-ignore
             for (let [name, initialValue, min, max] of initialParams[phase]) {
 
                 let rnd = getRandomArbitrary(min, max);
@@ -324,9 +340,23 @@ function main({ mesh, peaks_t }) {
         paramsChanged();
     }
 
+    function randomizeMapName() {
+        param.info.name = REALM_NAME_GENERATOR.getRealmName();
+
+        paramsChanged();
+    }
+
+    function randomizeMapDescriptive() {
+        param.info.descriptiveName = REALM_NAME_GENERATOR.getRealmDescriptiveName();
+
+        paramsChanged();
+    }
+
     AddListeners();
     generate();
 }
+
+
 
 function getRandomArbitrary(min, max) {
     return Math.random() * (max - min) + min;
